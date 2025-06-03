@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Webhook Events</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+            line-height: 1.6;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 40% 80%, rgba(120, 119, 198, 0.2) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 0.5rem;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .subtitle {
+            font-size: 1rem;
+            color: rgba(255, 255, 255, 0.8);
+            font-weight: 400;
+        }
+
+        .status-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 2rem;
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            padding: 1rem 2rem;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            color: #495057;
+            font-weight: 500;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .loading-spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #e9ecef;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            padding: 1rem 2rem;
+            background: rgba(255, 235, 235, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(254, 215, 215, 0.5);
+            border-radius: 12px;
+            color: #c53030;
+            font-weight: 500;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .no-events {
+            text-align: center;
+            padding: 3rem 2rem;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 16px;
+            color: #6c757d;
+            font-size: 1rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .events-grid {
+            display: grid;
+            gap: 1rem;
+            list-style: none;
+        }
+
+        .event-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 16px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+            animation: slideInUp 0.3s ease-out forwards;
+            opacity: 0;
+            transform: translateY(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .event-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+
+        @keyframes slideInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .event-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .event-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            flex-shrink: 0;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .event-icon.push {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .event-icon.pull-request {
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+            color: white;
+        }
+
+        .event-icon.merge {
+            background: linear-gradient(135deg, #4facfe, #00f2fe);
+            color: white;
+        }
+
+        .event-icon.default {
+            background: linear-gradient(135deg, #a8a8a8, #d3d3d3);
+            color: white;
+        }
+
+        .event-title {
+            flex: 1;
+        }
+
+        .event-action {
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: #2d3748;
+            line-height: 1.5;
+        }
+
+        .event-details {
+            display: grid;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .detail-row {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .detail-label {
+            color: #64748b;
+            font-weight: 500;
+            min-width: 80px;
+        }
+
+        .detail-value {
+            color: #4a5568;
+            font-weight: 400;
+        }
+
+        .author-name {
+            color: #667eea;
+            font-weight: 600;
+            background: rgba(102, 126, 234, 0.1);
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+
+        .branch-name {
+            color: #38a169;
+            font-weight: 600;
+            background: rgba(56, 161, 105, 0.1);
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            border: 1px solid rgba(56, 161, 105, 0.2);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .timestamp {
+            color: #718096;
+            font-size: 0.95rem;
+            font-weight: 300;
+        }
+
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 16px;
+            padding: 1.5rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            color: #6c757d;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .event-header {
+                flex-direction: column;
+                text-align: center;
+                gap: 1rem;
+            }
+            
+            .detail-row {
+                flex-direction: column;
+                gap: 0.5rem;
+                text-align: center;
+            }
+            
+            .detail-label {
+                min-width: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📦 GitHub Webhook Events</h1>
+            <p class="subtitle">Real-time repository activity monitoring</p>
+        </div>
+
+        <div class="stats-bar" id="statsBar" style="display: none;">
+            <div class="stat-card">
+                <div class="stat-number" id="totalEvents">0</div>
+                <div class="stat-label">Total Events</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="pushCount">0</div>
+                <div class="stat-label">Pushes</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="prCount">0</div>
+                <div class="stat-label">Pull Requests</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="mergeCount">0</div>
+                <div class="stat-label">Merges</div>
+            </div>
+        </div>
+
+        <div class="status-container" id="statusContainer">
+            <div class="loading" id="loadingIndicator">
+                <div class="loading-spinner"></div>
+                Loading events...
+            </div>
+        </div>
+
+        <ul class="events-grid" id="eventsList"></ul>
+    </div>
+
+    <script>
+        const apiUrl = "https://887b-103-130-204-44.ngrok-free.app/api/events";
+        let events = [];
+        let loading = true;
+        let error = null;
+
+        const elements = {
+            statusContainer: document.getElementById('statusContainer'),
+            eventsList: document.getElementById('eventsList'),
+            statsBar: document.getElementById('statsBar'),
+            totalEvents: document.getElementById('totalEvents'),
+            pushCount: document.getElementById('pushCount'),
+            prCount: document.getElementById('prCount'),
+            mergeCount: document.getElementById('mergeCount')
+        };
+
+        function formatTimestamp(isoString) {
+            const date = new Date(isoString);
+            const options = {
+                day: 'numeric', month: 'long', year: 'numeric',
+                hour: 'numeric', minute: '2-digit',
+                hour12: true, timeZone: 'UTC'
+            };
+            const formatted = date.toLocaleString('en-US', options);
+            return `${formatted} UTC`;
+        }
+
+        function getEventData(action) {
+            switch (action) {
+                case "PUSH":
+                    return { 
+                        icon: "🚀", 
+                        class: "push", 
+                        title: "Code Push",
+                        description: "New commits pushed to repository"
+                    };
+                case "PULL REQUEST":
+                    return { 
+                        icon: "🔀", 
+                        class: "pull-request", 
+                        title: "Pull Request",
+                        description: "New pull request submitted"
+                    };
+                case "MERGE":
+                    return { 
+                        icon: "🎯", 
+                        class: "merge", 
+                        title: "Branch Merge",
+                        description: "Branches successfully merged"
+                    };
+                default:
+                    return { 
+                        icon: "❓", 
+                        class: "default", 
+                        title: "Unknown Event",
+                        description: "Unrecognized event type"
+                    };
+            }
+        }
+
+        function formatMessage(event) {
+            const { author, action, from_branch, to_branch, timestamp } = event;
+            const time = formatTimestamp(timestamp);
+
+            switch (action) {
+                case "PUSH":
+                    return `"${author}" pushed to "${to_branch}" on ${time}`;
+                case "PULL REQUEST":
+                    return `"${author}" submitted a pull request from "${from_branch}" to "${to_branch}" on ${time}`;
+                case "MERGE":
+                    return `"${author}" merged branch "${from_branch}" to "${to_branch}" on ${time}`;
+                default:
+                    return "Unknown event type";
+            }
+        }
+
+        function createEventCard(event, index) {
+            const eventData = getEventData(event.action);
+            const message = formatMessage(event);
+
+            return `
+                <li class="event-card" style="animation-delay: ${index * 0.1}s">
+                    <div class="event-header">
+                        <div class="event-icon ${eventData.class}">
+                            ${eventData.icon}
+                        </div>
+                        <div class="event-title">
+                            <div class="event-action">${message}</div>
+                        </div>
+                    </div>
+                </li>
+            `;
+        }
+
+        function updateStats() {
+            const pushEvents = events.filter(e => e.action === "PUSH").length;
+            const prEvents = events.filter(e => e.action === "PULL REQUEST").length;
+            const mergeEvents = events.filter(e => e.action === "MERGE").length;
+
+            elements.totalEvents.textContent = events.length;
+            elements.pushCount.textContent = pushEvents;
+            elements.prCount.textContent = prEvents;
+            elements.mergeCount.textContent = mergeEvents;
+
+            if (events.length > 0) {
+                elements.statsBar.style.display = 'grid';
+            }
+        }
+
+        function renderEvents() {
+            if (loading) {
+                elements.statusContainer.innerHTML = `
+                    <div class="loading">
+                        <div class="loading-spinner"></div>
+                        Loading events...
+                    </div>
+                `;
+                return;
+            }
+
+            if (error) {
+                elements.statusContainer.innerHTML = `
+                    <div class="error">Error: ${error}</div>
+                `;
+                return;
+            }
+
+            elements.statusContainer.innerHTML = '';
+
+            if (events.length === 0) {
+                elements.eventsList.innerHTML = `
+                    <div class="no-events">
+                        <div style="font-size: 3rem; margin-bottom: 1rem;">🔍</div>
+                        <div>No events yet. Try pushing or opening a PR on GitHub.</div>
+                    </div>
+                `;
+                return;
+            }
+
+            elements.eventsList.innerHTML = events.map((event, index) => 
+                createEventCard(event, index)
+            ).join('');
+
+            updateStats();
+        }
+
+        function fetchEvents() {
+            fetch(apiUrl, {
+                headers: {
+                    'ngrok-skip-browser-warning': 'true'
+                }
+            })
+            .then(res => {
+                if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+                return res.json();
+            })
+            .then(data => {
+                console.log("Fetched Events:", data);
+                events = data.reverse();
+                loading = false;
+                error = null;
+                renderEvents();
+            })
+            .catch(err => {
+                console.error("Fetch error:", err);
+                error = err.message;
+                loading = false;
+                renderEvents();
+            });
+        }
+
+        // Initial fetch
+        fetchEvents();
+        
+        // Set up polling every 15 seconds
+        setInterval(fetchEvents, 15000);
+    </script>
+</body>
+</html>
